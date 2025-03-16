@@ -4,14 +4,20 @@ const multer = require("multer");
 const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
+const archiver = require("archiver");
+const http = require("http");
+const socketIo = require("socket.io");
 
 const app = express();
+const server = http.createServer(app);
+const io = socketIo(server);
 const upload = multer({ dest: "uploads/" });
 
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateText";
 const API_KEY = process.env.GEMINI_API_KEY;
 
 app.use(express.static("public"));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 const MODEL = "gemini-2.0-flash";
 const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`;
@@ -19,6 +25,8 @@ const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL
 
 async function translateTextBatch(texts, targetLanguage, retries = 3) {
   let translatedTexts = [];
+  let processedItems = 0;
+  let totalItems = texts.length;
 
   for (let text of texts) {
     const requestBody = {
@@ -65,6 +73,14 @@ ${text}`
           translatedTexts.push(text);
         }
       }
+    }
+    processedItems++;
+    if (io) {
+      io.emit("file_progress", {
+        processed: processedItems,
+        total: totalItems,
+        percent: Math.round((processedItems / totalItems) * 100),
+      });
     }
   }
 
@@ -114,31 +130,57 @@ async function translateSubtitles(subtitleText, targetLang = "vi") {
   }
 }
 
-app.post("/upload", upload.single("file"), async (req, res) => {
-    const filePath = req.file.path;
-    const fileName = req.file.originalname;
+app.post("/upload", upload.array("files", 10), async (req, res) => {
+    if (!req.files || req.files.length === 0) {
+        return res.status(400).send("No files uploaded.");
+    }
+
     const targetLang = req.body.language || "vi";
+    const outputFolder = path.join("uploads", `translated_${Date.now()}`);
+    fs.mkdirSync(outputFolder, { recursive: true });
 
-    try {
-        let fileContent = fs.readFileSync(filePath, "utf-8");
-        let translatedContents = await translateSubtitles(fileContent, targetLang);
+    let totalFiles = req.files.length;
+    let processedFiles = 0;
 
-        const ext = path.extname(fileName);
-        const baseName = path.basename(fileName, ext);
-        const translatedFileName = `${baseName}.${targetLang}${ext}`;
-        const translatedFilePath = `uploads/${translatedFileName}`;
+    for (let file of req.files) {
+        let fileContent = fs.readFileSync(file.path, "utf-8");
 
+        // Đợi một khoảng thời gian giữa các lần gọi API để tránh rate limit
+        await new Promise(resolve => setTimeout(resolve, 5000)); // 5 giây delay
+
+        let translatedContents;
+        try {
+            translatedContents = await translateSubtitles(fileContent, targetLang);
+        } catch (error) {
+            console.error(`Error translating file ${file.originalname}:`, error);
+            continue; // Bỏ qua file lỗi và tiếp tục
+        }
+
+        let translatedFilePath = path.join(outputFolder, file.originalname.replace(".ass", `.${targetLang}.ass`));
         fs.writeFileSync(translatedFilePath, translatedContents.join("\n"), "utf-8");
 
-        res.download(translatedFilePath, translatedFileName, () => {
-            fs.unlinkSync(filePath);
-            fs.unlinkSync(translatedFilePath);
-        });
-    } catch (err) {
-        res.status(500).send("Error processing file.");
+        processedFiles++;
+        io.emit("progress", { processed: processedFiles, total: totalFiles });
     }
+
+    // Tạo file ZIP sau khi tất cả file đã được dịch
+    const zipFilePath = path.join("uploads", `${path.basename(outputFolder)}.zip`);
+    const output = fs.createWriteStream(zipFilePath);
+    const archive = archiver("zip", { zlib: { level: 9 } });
+
+    archive.pipe(output);
+    archive.directory(outputFolder, false);
+    archive.finalize();
+
+    output.on("close", () => {
+        res.json({ downloadUrl: `/${zipFilePath}` });
+    });
 });
 
-app.listen(3000, () => {
+io.on("connection", (socket) => {
+    console.log("Client connected");
+});
+
+server.listen(3000, () => {
     console.log("Server running at http://localhost:3000");
 });

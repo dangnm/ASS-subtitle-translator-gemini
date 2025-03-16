@@ -4,19 +4,109 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Subtitle Translator</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            text-align: center;
+        }
+        progress {
+            width: 80%;
+            height: 20px;
+            margin: 10px 0;
+        }
+        .progress-container {
+            width: 80%;
+            background: #ccc;
+            border-radius: 5px;
+            margin: 10px auto;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 20px;
+            width: 0%;
+            background: green;
+            text-align: center;
+            color: white;
+            line-height: 20px;
+        }
+    </style>
 </head>
 <body>
-    <h2>Upload Subtitle File</h2>
-    <form action="/upload" method="POST" enctype="multipart/form-data">
-        <input type="file" name="file" accept=".ass" required>
+
+    <h2>Upload Subtitle Files</h2>
+    <form id="uploadForm">
+        <input type="file" name="files" accept=".ass" multiple required>
         <label for="language">Translate to:</label>
         <select name="language">
-            <option value="vi">Vietnamse</option>
+            <option value="vi">Vietnamese</option>
             <option value="fr">French</option>
             <option value="de">German</option>
             <option value="zh">Chinese</option>
         </select>
         <button type="submit">Upload & Translate</button>
     </form>
+
+    <h3>Total Progress: <span id="progressText">0%</span></h3>
+    <progress id="progressBar" value="0" max="100"></progress>
+
+    <h3>Current File Progress:</h3>
+    <div class="progress-container">
+        <div id="file-progress-bar" class="progress-bar">0%</div>
+    </div>
+
+    <a id="downloadLink" style="display: none;" download>Download Translated Files</a>
+    <p id="statusMessage"></p>
+
+    <script>
+        const socket = io();
+        const form = document.getElementById("uploadForm");
+        const progressBar = document.getElementById("progressBar");
+        const progressText = document.getElementById("progressText");
+        const fileProgressBar = document.getElementById("file-progress-bar");
+        const downloadLink = document.getElementById("downloadLink");
+        const statusMessage = document.getElementById("statusMessage");
+
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+
+            statusMessage.innerText = "Uploading and processing files...";
+            downloadLink.style.display = "none";
+
+            try {
+                const response = await fetch("/upload", {
+                    method: "POST",
+                    body: formData
+                });
+
+                if (!response.ok) throw new Error("Server error!");
+
+                const result = await response.json();
+                statusMessage.innerText = "Translation completed! Click the link below to download.";
+                downloadLink.href = result.downloadUrl;
+                downloadLink.style.display = "block";
+                downloadLink.innerText = "Download Translated ZIP";
+            } catch (error) {
+                console.error("Upload failed:", error);
+                statusMessage.innerText = "Error: Unable to process files.";
+            }
+        });
+
+        // Tổng tiến trình
+        socket.on("progress", ({ processed, total }) => {
+            const percent = Math.round((processed / total) * 100);
+            progressBar.value = percent;
+            progressText.innerText = `${percent}%`;
+        });
+
+        // Tiến trình từng file
+        socket.on("file_progress", ({ processed, total, percent }) => {
+            fileProgressBar.style.width = `${percent}%`;
+            fileProgressBar.innerText = `${percent}%`;
+        });
+    </script>
+
 </body>
 </html>
