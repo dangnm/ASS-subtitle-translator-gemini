@@ -36,9 +36,9 @@ async function translateTextBatch(texts, targetLanguage, retries = 3) {
           KEEP the same structure,
           DO NOT insert more new lines,
           DO NOT remove or modify "Dialogue:" at the beginning of a line.
+          ALWAYS translate the text after ",," while preserving its original format.
           ONLY return the translated text without any additional explanations, notes, or formatting:
-
-${text}`
+          ${text}`
         }]
       }]
     };
