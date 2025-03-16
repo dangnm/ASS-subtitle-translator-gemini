@@ -26,7 +26,8 @@ async function translateTextBatch(texts, targetLanguage, retries = 3) {
         parts: [{
           text: `Translate the following subtitle to ${targetLanguage}.
           KEEP the same structure,
-          DO NOT insert more new lines
+          DO NOT insert more new lines,
+          DO NOT remove or modify "Dialogue:" at the beginning of a line.
           ONLY return the translated text without any additional explanations, notes, or formatting:
 
 ${text}`
@@ -54,6 +55,7 @@ ${text}`
 
         const data = await response.json();
         const translatedText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || text;
+
         translatedTexts.push(translatedText);
         break;
 
@@ -121,10 +123,14 @@ app.post("/upload", upload.single("file"), async (req, res) => {
         let fileContent = fs.readFileSync(filePath, "utf-8");
         let translatedContents = await translateSubtitles(fileContent, targetLang);
 
-        const translatedFilePath = `uploads/translated_${fileName}`;
+        const ext = path.extname(fileName);
+        const baseName = path.basename(fileName, ext);
+        const translatedFileName = `${baseName}.${targetLang}${ext}`;
+        const translatedFilePath = `uploads/${translatedFileName}`;
+
         fs.writeFileSync(translatedFilePath, translatedContents.join("\n"), "utf-8");
 
-        res.download(translatedFilePath, `translated_${fileName}`, () => {
+        res.download(translatedFilePath, translatedFileName, () => {
             fs.unlinkSync(filePath);
             fs.unlinkSync(translatedFilePath);
         });
