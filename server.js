@@ -130,7 +130,7 @@ async function translateSubtitles(subtitleText, targetLang = "vi") {
   }
 }
 
-app.post("/upload", upload.array("files", 10), async (req, res) => {
+app.post("/upload", upload.array("files", 60), async (req, res) => {
     if (!req.files || req.files.length === 0) {
         return res.status(400).send("No files uploaded.");
     }
