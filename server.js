@@ -145,15 +145,14 @@ app.post("/upload", upload.array("files", 10), async (req, res) => {
     for (let file of req.files) {
         let fileContent = fs.readFileSync(file.path, "utf-8");
 
-        // Đợi một khoảng thời gian giữa các lần gọi API để tránh rate limit
-        await new Promise(resolve => setTimeout(resolve, 5000)); // 5 giây delay
+        await new Promise(resolve => setTimeout(resolve, 5000));
 
         let translatedContents;
         try {
             translatedContents = await translateSubtitles(fileContent, targetLang);
         } catch (error) {
             console.error(`Error translating file ${file.originalname}:`, error);
-            continue; // Bỏ qua file lỗi và tiếp tục
+            continue;
         }
 
         let translatedFilePath = path.join(outputFolder, file.originalname.replace(".ass", `.${targetLang}.ass`));
@@ -163,7 +162,6 @@ app.post("/upload", upload.array("files", 10), async (req, res) => {
         io.emit("progress", { processed: processedFiles, total: totalFiles });
     }
 
-    // Tạo file ZIP sau khi tất cả file đã được dịch
     const zipFilePath = path.join("uploads", `${path.basename(outputFolder)}.zip`);
     const output = fs.createWriteStream(zipFilePath);
     const archive = archiver("zip", { zlib: { level: 9 } });
