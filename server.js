@@ -104,7 +104,7 @@ async function translateSubtitles(subtitleText, targetLang = "vi") {
     sections.push(...translatedSections);
 
 
-    console.log(sections)
+    // console.log(sections)
     return sections;
   } catch (error) {
     console.error("Subtitle Translation Error:", error);
